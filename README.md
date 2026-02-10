@@ -56,7 +56,7 @@ These values are pre-configured for the **ASUS RT-AX59U** router:
 ```bash
 ssh root@192.168.1.1
 cd /root
-curl -o passwall-monitor.sh https://raw.githubusercontent.com/YOUR_USERNAME/openwrt-passwall-monitor/main/passwall-monitor.sh
+curl -o passwall-monitor.sh https://raw.githubusercontent.com/YounesRahimi/openwrt-passwall-monitor/main/passwall-monitor.sh
 chmod +x passwall-monitor.sh
 ```
 
@@ -288,7 +288,7 @@ cd /root
 cp passwall-monitor.sh passwall-monitor.sh.backup
 
 # Download new version
-curl -o passwall-monitor.sh https://raw.githubusercontent.com/YOUR_USERNAME/openwrt-passwall-monitor/main/passwall-monitor.sh
+curl -o passwall-monitor.sh https://raw.githubusercontent.com/YounesRahimi/openwrt-passwall-monitor/main/passwall-monitor.sh
 chmod +x passwall-monitor.sh
 
 # Restore your custom settings
@@ -349,9 +349,9 @@ MIT License - See [LICENSE](LICENSE) file for details
 
 ## 📞 Support
 
-- 🐛 **Issues**: [GitHub Issues](https://github.com/YOUR_USERNAME/openwrt-passwall-monitor/issues)
-- 💬 **Discussions**: [GitHub Discussions](https://github.com/YOUR_USERNAME/openwrt-passwall-monitor/discussions)
-- 📖 **Wiki**: [Documentation](https://github.com/YOUR_USERNAME/openwrt-passwall-monitor/wiki)
+- 🐛 **Issues**: [GitHub Issues](https://github.com/YounesRahimi/openwrt-passwall-monitor/issues)
+- 💬 **Discussions**: [GitHub Discussions](https://github.com/YounesRahimi/openwrt-passwall-monitor/discussions)
+- 📖 **Wiki**: [Documentation](https://github.com/YounesRahimi/openwrt-passwall-monitor/wiki)
 
 ---
 

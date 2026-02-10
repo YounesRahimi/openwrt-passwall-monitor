@@ -34,7 +34,7 @@ The installation is just 3 commands!
 **Easiest way:**
 ```bash
 ssh root@192.168.1.1
-wget -O - https://raw.githubusercontent.com/YOUR_USERNAME/openwrt-passwall-monitor/main/install.sh | sh
+wget -O - https://raw.githubusercontent.com/YounesRahimi/openwrt-passwall-monitor/main/install.sh | sh
 ```
 
 **Manual way:** See [Quick Start in README](README.md#-quick-start-3-steps)
@@ -290,7 +290,7 @@ The monitor runs locally on the router. For remote monitoring, you could:
 
 ```bash
 # Quick method
-wget -O - https://raw.githubusercontent.com/YOUR_USERNAME/openwrt-passwall-monitor/main/uninstall.sh | sh
+wget -O - https://raw.githubusercontent.com/YounesRahimi/openwrt-passwall-monitor/main/uninstall.sh | sh
 
 # Manual method
 crontab -e  # Remove all passwall-monitor lines
@@ -311,7 +311,7 @@ Yes! Just run the install script again.
 ### Where can I get help?
 
 1. Check [Troubleshooting Guide](docs/TROUBLESHOOTING.md)
-2. Search [existing issues](https://github.com/YOUR_USERNAME/openwrt-passwall-monitor/issues)
+2. Search [existing issues](https://github.com/YounesRahimi/openwrt-passwall-monitor/issues)
 3. Create a new issue with details
 
 ### How do I report a bug?
@@ -338,6 +338,6 @@ Not yet! Create a GitHub Discussion if interested in starting one.
 
 ## Still have questions?
 
-- 💬 [GitHub Discussions](https://github.com/YOUR_USERNAME/openwrt-passwall-monitor/discussions)
-- 🐛 [Report an Issue](https://github.com/YOUR_USERNAME/openwrt-passwall-monitor/issues/new/choose)
+- 💬 [GitHub Discussions](https://github.com/YounesRahimi/openwrt-passwall-monitor/discussions)
+- 🐛 [Report an Issue](https://github.com/YounesRahimi/openwrt-passwall-monitor/issues/new/choose)
 - 📖 [Read the Docs](docs/)

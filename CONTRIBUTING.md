@@ -8,7 +8,7 @@ First off, thank you for considering contributing! 🎉
 
 **Before creating a bug report:**
 - Check the [FAQ](README.md#-faq) section
-- Search existing [issues](https://github.com/YOUR_USERNAME/openwrt-passwall-monitor/issues)
+- Search existing [issues](https://github.com/YounesRahimi/openwrt-passwall-monitor/issues)
 - Try the troubleshooting steps in the README
 
 **When creating a bug report, include:**
@@ -54,7 +54,7 @@ One of the most valuable contributions is testing on different router models:
 
 ```bash
 # Clone your fork
-git clone https://github.com/YOUR_USERNAME/openwrt-passwall-monitor.git
+git clone https://github.com/YounesRahimi/openwrt-passwall-monitor.git
 cd openwrt-passwall-monitor
 
 # Create a branch
@@ -208,7 +208,7 @@ Contributors will be:
 
 ## Questions?
 
-- 💬 [GitHub Discussions](https://github.com/YOUR_USERNAME/openwrt-passwall-monitor/discussions)
+- 💬 [GitHub Discussions](https://github.com/YounesRahimi/openwrt-passwall-monitor/discussions)
 - 📧 Create an issue labeled "question"
 
 ## License

@@ -35,4 +35,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Optimized for ASUS RT-AX59U
 - Compatible with any OpenWRT router (with threshold adjustment)
 
-[1.0.0]: https://github.com/YOUR_USERNAME/openwrt-passwall-monitor/releases/tag/v1.0.0
+[1.0.0]: https://github.com/YounesRahimi/openwrt-passwall-monitor/releases/tag/v1.0.0

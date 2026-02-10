@@ -28,7 +28,7 @@ opkg install wget
 opkg install curl
 
 # Modify install command to use curl
-curl -o /root/passwall-monitor.sh https://raw.githubusercontent.com/YOUR_USERNAME/openwrt-passwall-monitor/main/passwall-monitor.sh
+curl -o /root/passwall-monitor.sh https://raw.githubusercontent.com/YounesRahimi/openwrt-passwall-monitor/main/passwall-monitor.sh
 ```
 
 ### Error: "crontab: command not found"
@@ -419,7 +419,7 @@ cat /tmp/diagnostic.txt
    - Expected vs actual behavior
 
 3. **Check existing issues:**
-   - [GitHub Issues](https://github.com/YOUR_USERNAME/openwrt-passwall-monitor/issues)
+   - [GitHub Issues](https://github.com/YounesRahimi/openwrt-passwall-monitor/issues)
 
 ---
 
@@ -437,5 +437,5 @@ crontab -e
 killall passwall-monitor.sh
 
 # Or use uninstall script
-wget -O - https://raw.githubusercontent.com/YOUR_USERNAME/openwrt-passwall-monitor/main/uninstall.sh | sh
+wget -O - https://raw.githubusercontent.com/YounesRahimi/openwrt-passwall-monitor/main/uninstall.sh | sh
 ```

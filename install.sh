@@ -4,7 +4,7 @@
 
 set -e  # Exit on error
 
-SCRIPT_URL="https://raw.githubusercontent.com/YOUR_USERNAME/openwrt-passwall-monitor/main/passwall-monitor.sh"
+SCRIPT_URL="https://raw.githubusercontent.com/YounesRahimi/openwrt-passwall-monitor/main/passwall-monitor.sh"
 INSTALL_DIR="/root"
 SCRIPT_NAME="passwall-monitor.sh"
 SCRIPT_PATH="$INSTALL_DIR/$SCRIPT_NAME"
