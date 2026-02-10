@@ -15,8 +15,9 @@ CONNECTIVITY_TIMEOUT=10  # Timeout for connectivity test in seconds
 CONNECTIVITY_FAILURE_DURATION=60  # Must fail for 60 seconds before restart
 CONNECTIVITY_URL="https://www.google.com/generate_204"
 
-# Logging
+# Logging Configuration
 LOG_FILE="/tmp/log/passwall_monitor.log"
+LOG_LEVEL="INFO"  # Options: DEBUG, INFO, WARNING, ERROR (DEBUG shows everything)
 
 # Counter for consecutive high CPU readings
 high_cpu_count=0
@@ -31,6 +32,29 @@ mkdir -p "$(dirname "$LOG_FILE")"
 
 log_message() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "$LOG_FILE"
+}
+
+# Logging functions with level filtering
+log_debug() {
+    if [ "$LOG_LEVEL" = "DEBUG" ]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - [DEBUG] $1" >> "$LOG_FILE"
+    fi
+}
+
+log_info() {
+    if [ "$LOG_LEVEL" = "DEBUG" ] || [ "$LOG_LEVEL" = "INFO" ]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - [INFO] $1" >> "$LOG_FILE"
+    fi
+}
+
+log_warning() {
+    if [ "$LOG_LEVEL" = "DEBUG" ] || [ "$LOG_LEVEL" = "INFO" ] || [ "$LOG_LEVEL" = "WARNING" ]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - [WARNING] $1" >> "$LOG_FILE"
+    fi
+}
+
+log_error() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - [ERROR] $1" >> "$LOG_FILE"
 }
 
 get_passwall_cpu() {
@@ -110,7 +134,7 @@ check_network_connectivity() {
             return 1  # Failure
         fi
     else
-        log_message "WARNING: Neither curl nor wget available for connectivity check"
+        log_warning "Neither curl nor wget available for connectivity check"
         return 0  # Can't test, assume OK
     fi
 }
@@ -118,16 +142,16 @@ check_network_connectivity() {
 restart_passwall() {
     local reason="$1"
     if [ "$reason" = "cpu" ]; then
-        log_message "HIGH CPU DETECTED - Restarting Passwall (CPU: $2%)"
+        log_error "HIGH CPU DETECTED - Restarting Passwall (CPU: $2%)"
     elif [ "$reason" = "connectivity" ]; then
-        log_message "NETWORK CONNECTIVITY FAILURE - Restarting Passwall"
+        log_error "NETWORK CONNECTIVITY FAILURE - Restarting Passwall"
     else
-        log_message "Restarting Passwall (Reason: $reason)"
+        log_error "Restarting Passwall (Reason: $reason)"
     fi
 
     /etc/init.d/passwall restart
     sleep 5
-    log_message "Passwall restarted successfully"
+    log_info "Passwall restarted successfully"
 
     # Reset counters
     high_cpu_count=0
@@ -137,11 +161,11 @@ restart_passwall() {
 }
 
 # Main monitoring loop - runs for one iteration (called by cron every 5 seconds)
-log_message "Monitor starting - checking Passwall CPU and connectivity"
+log_debug "Monitor starting - checking Passwall CPU and connectivity"
 
 # Check CPU usage
 current_cpu=$(get_passwall_cpu)
-log_message "Current CPU usage: $current_cpu%"
+log_debug "Current CPU usage: $current_cpu%"
 
 cpu_restart_needed=0
 if [ "$current_cpu" -gt "$CPU_THRESHOLD" ]; then
@@ -155,7 +179,7 @@ if [ "$current_cpu" -gt "$CPU_THRESHOLD" ]; then
     high_cpu_count=$((high_cpu_count + 1))
     echo "$high_cpu_count" > /tmp/passwall_high_cpu_count
 
-    log_message "High CPU detected: $current_cpu% (count: $high_cpu_count/$required_cpu_checks)"
+    log_warning "High CPU detected: $current_cpu% (count: $high_cpu_count/$required_cpu_checks)"
 
     # Check if threshold duration exceeded
     if [ "$high_cpu_count" -ge "$required_cpu_checks" ]; then
@@ -164,7 +188,7 @@ if [ "$current_cpu" -gt "$CPU_THRESHOLD" ]; then
 else
     # CPU is normal, reset counter
     if [ -f /tmp/passwall_high_cpu_count ]; then
-        log_message "CPU normalized: $current_cpu% - Resetting counter"
+        log_info "CPU normalized: $current_cpu% - Resetting counter"
         rm -f /tmp/passwall_high_cpu_count
     fi
 fi
@@ -183,7 +207,7 @@ if [ "$ENABLE_CONNECTIVITY_CHECK" -eq 1 ]; then
         connectivity_failure_count=$((connectivity_failure_count + 1))
         echo "$connectivity_failure_count" > /tmp/passwall_connectivity_failure_count
 
-        log_message "Network connectivity failure detected (count: $connectivity_failure_count/$required_connectivity_checks)"
+        log_warning "Network connectivity failure detected (count: $connectivity_failure_count/$required_connectivity_checks)"
 
         # Check if threshold duration exceeded
         if [ "$connectivity_failure_count" -ge "$required_connectivity_checks" ]; then
@@ -192,7 +216,7 @@ if [ "$ENABLE_CONNECTIVITY_CHECK" -eq 1 ]; then
     else
         # Connectivity is OK, reset counter
         if [ -f /tmp/passwall_connectivity_failure_count ]; then
-            log_message "Network connectivity restored - Resetting counter"
+            log_info "Network connectivity restored - Resetting counter"
             rm -f /tmp/passwall_connectivity_failure_count
         fi
     fi
@@ -205,4 +229,4 @@ elif [ "$connectivity_restart_needed" -eq 1 ]; then
     restart_passwall "connectivity"
 fi
 
-log_message "Monitor check completed"
+log_debug "Monitor check completed"
