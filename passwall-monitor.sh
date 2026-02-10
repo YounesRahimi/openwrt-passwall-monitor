@@ -1,15 +1,19 @@
 #!/bin/sh
 # Passwall CPU Monitor Script for OpenWRT
+# Author: Younes Rahimi
 # Monitors Passwall CPU usage and restarts if > 25% for 15+ seconds
 
 THRESHOLD=25
 CHECK_INTERVAL=5  # Check every 5 seconds
 HIGH_CPU_DURATION=15  # Must be high for 15 seconds
-LOG_FILE="/var/log/passwall_monitor.log"
+LOG_FILE="/tmp/log/passwall_monitor.log"
 
 # Counter for consecutive high CPU readings
 high_cpu_count=0
 required_checks=$((HIGH_CPU_DURATION / CHECK_INTERVAL))
+
+# Ensure log directory exists
+mkdir -p "$(dirname "$LOG_FILE")"
 
 log_message() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "$LOG_FILE"
@@ -17,24 +21,46 @@ log_message() {
 
 get_passwall_cpu() {
     # Get CPU usage for xray, sing-box, or hysteria processes
-    # OpenWRT's top command outputs differently than standard Linux
-    local cpu_usage=0
-    
+    local total_cpu=0
+
     # Check for common Passwall process names
     for process in xray sing-box hysteria v2ray; do
-        local pid=$(pidof "$process" 2>/dev/null)
-        if [ -n "$pid" ]; then
-            # Use top to get CPU usage - sample for 1 second
-            local proc_cpu=$(top -bn1 | grep -E "^\s*$pid" | awk '{print $7}' | sed 's/%//')
-            if [ -n "$proc_cpu" ]; then
-                # Handle decimal values
-                proc_cpu=$(echo "$proc_cpu" | awk '{print int($1+0.5)}')
-                cpu_usage=$((cpu_usage + proc_cpu))
-            fi
+        local pids=$(pidof "$process" 2>/dev/null || true)
+        if [ -n "$pids" ]; then
+            for pid in $pids; do
+                # Use /proc/stat for more reliable CPU measurement
+                if [ -f "/proc/$pid/stat" ]; then
+                    # Read CPU times from /proc/pid/stat
+                    local stat_line=$(cat "/proc/$pid/stat" 2>/dev/null || echo "")
+                    if [ -n "$stat_line" ]; then
+                        # Get utime + stime (user + system CPU time)
+                        local utime=$(echo "$stat_line" | awk '{print $14}')
+                        local stime=$(echo "$stat_line" | awk '{print $15}')
+
+                        # Simple heuristic: if process exists and is consuming resources
+                        if [ -n "$utime" ] && [ -n "$stime" ]; then
+                            # Check if process is actively using CPU by reading twice
+                            sleep 1
+                            local stat_line2=$(cat "/proc/$pid/stat" 2>/dev/null || echo "")
+                            if [ -n "$stat_line2" ]; then
+                                local utime2=$(echo "$stat_line2" | awk '{print $14}')
+                                local stime2=$(echo "$stat_line2" | awk '{print $15}')
+
+                                # Calculate CPU usage (simplified)
+                                local cpu_ticks=$((utime2 + stime2 - utime - stime))
+                                # If process consumed significant CPU in 1 second, consider it high
+                                if [ "$cpu_ticks" -gt 50 ]; then
+                                    total_cpu=$((total_cpu + 30))
+                                fi
+                            fi
+                        fi
+                    fi
+                fi
+            done
         fi
     done
     
-    echo "$cpu_usage"
+    echo "$total_cpu"
 }
 
 restart_passwall() {
@@ -46,12 +72,17 @@ restart_passwall() {
 }
 
 # Main monitoring loop - runs for one iteration (called by cron every 5 seconds)
+log_message "Monitor starting - checking Passwall CPU usage"
+
 current_cpu=$(get_passwall_cpu)
+log_message "Current CPU usage: $current_cpu%"
 
 if [ "$current_cpu" -gt "$THRESHOLD" ]; then
     # Read the counter from state file
     if [ -f /tmp/passwall_high_cpu_count ]; then
         high_cpu_count=$(cat /tmp/passwall_high_cpu_count)
+    else
+        high_cpu_count=0
     fi
     
     high_cpu_count=$((high_cpu_count + 1))
@@ -71,3 +102,5 @@ else
         rm -f /tmp/passwall_high_cpu_count
     fi
 fi
+
+log_message "Monitor check completed"

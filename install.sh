@@ -1,11 +1,12 @@
 #!/bin/sh
 # Quick Installation Script for OpenWRT Passwall Monitor
+# Author: Younes Rahimi
 # Run this on your OpenWRT router
 
 set -e  # Exit on error
 
 SCRIPT_URL="https://raw.githubusercontent.com/YounesRahimi/openwrt-passwall-monitor/main/passwall-monitor.sh"
-INSTALL_DIR="/root"
+INSTALL_DIR="/usr/bin"
 SCRIPT_NAME="passwall-monitor.sh"
 SCRIPT_PATH="$INSTALL_DIR/$SCRIPT_NAME"
 
@@ -29,6 +30,9 @@ for cmd in curl crontab; do
         exit 1
     fi
 done
+
+# Ensure install directory exists
+mkdir -p "$INSTALL_DIR"
 
 echo "✓ Prerequisites OK"
 echo ""
@@ -107,14 +111,14 @@ echo ""
 echo "What's Next:"
 echo ""
 echo "1. View logs:"
-echo "   tail -f /var/log/passwall_monitor.log"
+echo "   tail -f /tmp/log/passwall_monitor.log"
 echo ""
 echo "2. Check status:"
 echo "   ps | grep passwall-monitor"
 echo ""
 echo "3. Customize thresholds (optional):"
 echo "   vi $SCRIPT_PATH"
-echo "   # Edit CPU_THRESHOLD and RAM_THRESHOLD_MB"
+echo "   # Edit THRESHOLD and HIGH_CPU_DURATION"
 echo ""
 echo "4. View this installation:"
 echo "   crontab -l"

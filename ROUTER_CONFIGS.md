@@ -6,7 +6,7 @@ This directory contains tested configurations for various router models.
 
 1. Find your router model below
 2. Copy the recommended threshold values
-3. Edit `/root/passwall-monitor.sh` on your router
+3. Edit `/usr/bin/passwall-monitor.sh` on your router
 4. Replace the default values with the recommended ones
 5. Restart the monitor (it will use new values on next run)
 

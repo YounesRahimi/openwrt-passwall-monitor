@@ -1,12 +1,13 @@
 #!/bin/sh
 # Uninstall Script for OpenWRT Passwall Monitor
+# Author: Younes Rahimi
 
 set -e
 
-SCRIPT_PATH="/root/passwall-monitor.sh"
-LOG_FILE="/var/log/passwall_monitor.log"
-STATE_FILE="/tmp/passwall_monitor_state"
-RESTART_FILE="/tmp/passwall_last_restart"
+SCRIPT_PATH="/usr/bin/passwall-monitor.sh"
+LOG_FILE="/tmp/log/passwall_monitor.log"
+STATE_FILE="/tmp/passwall_high_cpu_count"
+OLD_SCRIPT_PATH="/root/passwall-monitor.sh"  # Legacy location
 
 echo "================================================"
 echo "  OpenWRT Passwall Monitor - Uninstaller"
@@ -16,6 +17,7 @@ echo ""
 # Confirmation
 echo "This will remove:"
 echo "  - Monitor script ($SCRIPT_PATH)"
+echo "  - Legacy script if exists ($OLD_SCRIPT_PATH)"
 echo "  - Cron jobs"
 echo "  - Log files"
 echo "  - Temporary files"
@@ -48,12 +50,18 @@ echo "✓ Stopped"
 echo ""
 echo "[3/4] Removing files..."
 
-# Remove script
+# Remove current script
 if [ -f "$SCRIPT_PATH" ]; then
     rm "$SCRIPT_PATH"
     echo "✓ Removed $SCRIPT_PATH"
 else
     echo "⚠ Script not found: $SCRIPT_PATH"
+fi
+
+# Remove legacy script if it exists
+if [ -f "$OLD_SCRIPT_PATH" ]; then
+    rm "$OLD_SCRIPT_PATH"
+    echo "✓ Removed legacy script: $OLD_SCRIPT_PATH"
 fi
 
 # Remove log file (ask first)
@@ -69,7 +77,7 @@ if [ -f "$LOG_FILE" ]; then
 fi
 
 # Remove state files
-rm -f "$STATE_FILE" "$RESTART_FILE"
+rm -f "$STATE_FILE"
 echo "✓ Removed temporary files"
 
 echo ""

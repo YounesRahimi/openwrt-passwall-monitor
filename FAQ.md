@@ -16,7 +16,7 @@ Common reasons:
 
 ### Will this work on my router?
 
-Yes! It works on any OpenWRT router. The default configuration is optimized for ASUS RT-AX59U, but you can adjust thresholds for your specific router. See [Router Configs](examples/ROUTER_CONFIGS.md).
+Yes! It works on any OpenWRT router. The default configuration is optimized for ASUS RT-AX59U, but you can adjust thresholds for your specific router. See [Router Configs](ROUTER_CONFIGS.md).
 
 ### Do I need technical knowledge to use this?
 
@@ -37,7 +37,7 @@ ssh root@192.168.1.1
 wget -O - https://raw.githubusercontent.com/YounesRahimi/openwrt-passwall-monitor/main/install.sh | sh
 ```
 
-**Manual way:** See [Quick Start in README](README.md#-quick-start-3-steps)
+**Manual way:** See [Quick Start in README](README.md#-quick-start-2-steps)
 
 ### Can I use this with the LuCI web interface?
 
@@ -52,7 +52,7 @@ No! Once installed, it runs entirely on your router. Your computer can be off.
 
 ### Where should I install the script?
 
-Default location is `/root/passwall-monitor.sh`. This is recommended as `/root` is typically persistent across reboots.
+Default location is `/usr/bin/passwall-monitor.sh`. This is the standard location for user scripts and is persistent across reboots.
 
 ## Configuration Questions
 
@@ -68,7 +68,7 @@ These are optimized for a 4-core router with 512MB RAM.
 
 ### How do I know what thresholds to use?
 
-See the [Threshold Calculation Guide](examples/ROUTER_CONFIGS.md#how-to-calculate-thresholds-for-your-router).
+See the [Threshold Calculation Guide](ROUTER_CONFIGS.md#how-to-calculate-thresholds-for-your-router).
 
 **Quick formula:**
 - **CPU:** 100% ÷ (number of cores) = threshold per core
@@ -100,7 +100,7 @@ Yes, but briefly. Passwall restart takes 3-5 seconds. Active connections will ne
 
 ```bash
 # Check logs
-tail -f /var/log/passwall_monitor.log
+tail -f /tmp/log/passwall_monitor.log
 
 # Check if monitoring
 ps | grep passwall-monitor
@@ -146,10 +146,10 @@ ls -la /var/log/
 
 # Create if needed
 mkdir -p /var/log
-touch /var/log/passwall_monitor.log
+touch /tmp/log/passwall_monitor.log
 ```
 
-See [Log Issues](docs/TROUBLESHOOTING.md#log-issues) for more.
+See [Log Issues](TROUBLESHOOTING.md#log-issues) for more.
 
 ### It's restarting Passwall too often
 
@@ -163,7 +163,7 @@ See [Log Issues](docs/TROUBLESHOOTING.md#log-issues) for more.
 - Increase `HIGH_USAGE_DURATION`
 - Check your VPN server status
 
-See [False Positives](docs/TROUBLESHOOTING.md#false-positives--too-many-restarts).
+See [False Positives](TROUBLESHOOTING.md#false-positives--too-many-restarts).
 
 ### It's not detecting Passwall processes
 
@@ -173,7 +173,7 @@ See [False Positives](docs/TROUBLESHOOTING.md#false-positives--too-many-restarts
 ps | grep -E 'xray|sing-box|hysteria|v2ray|trojan'
 
 # If different name, add to script
-vi /root/passwall-monitor.sh
+vi /usr/bin/passwall-monitor.sh
 # Edit get_passwall_cpu() function
 ```
 
@@ -195,10 +195,10 @@ cat /proc/$(pidof xray)/status | grep VmRSS
 **Fix:**
 ```bash
 # Check syntax
-sh -n /root/passwall-monitor.sh
+sh -n /usr/bin/passwall-monitor.sh
 
-# Common fix: line endings
-sed -i 's/\r$//' /root/passwall-monitor.sh
+# Fix line endings if needed
+sed -i 's/\r$//' /usr/bin/passwall-monitor.sh
 ```
 
 ## Performance Questions
@@ -271,7 +271,7 @@ Yes! Each router runs independently. Just install on each one.
 
 ```bash
 # Backup script with your custom settings
-scp root@192.168.1.1:/root/passwall-monitor.sh ./my-router-config.sh
+scp root@192.168.1.1:/usr/bin/passwall-monitor.sh ./my-router-config.sh
 
 # Backup cron jobs
 ssh root@192.168.1.1 'crontab -l' > my-cron.backup
@@ -294,8 +294,8 @@ wget -O - https://raw.githubusercontent.com/YounesRahimi/openwrt-passwall-monito
 
 # Manual method
 crontab -e  # Remove all passwall-monitor lines
-rm /root/passwall-monitor.sh
-rm /var/log/passwall_monitor.log
+rm /usr/bin/passwall-monitor.sh
+rm /tmp/log/passwall_monitor.log
 ```
 
 ### Will uninstalling affect my Passwall?
@@ -310,13 +310,13 @@ Yes! Just run the install script again.
 
 ### Where can I get help?
 
-1. Check [Troubleshooting Guide](docs/TROUBLESHOOTING.md)
+1. Check [Troubleshooting Guide](TROUBLESHOOTING.md)
 2. Search [existing issues](https://github.com/YounesRahimi/openwrt-passwall-monitor/issues)
 3. Create a new issue with details
 
 ### How do I report a bug?
 
-Use the [Bug Report template](.github/ISSUE_TEMPLATE/bug_report.md) and include:
+Use the [Bug Report template](bug_report.md) and include:
 - Router model & specs
 - Your configuration
 - Logs
@@ -340,4 +340,4 @@ Not yet! Create a GitHub Discussion if interested in starting one.
 
 - 💬 [GitHub Discussions](https://github.com/YounesRahimi/openwrt-passwall-monitor/discussions)
 - 🐛 [Report an Issue](https://github.com/YounesRahimi/openwrt-passwall-monitor/issues/new/choose)
-- 📖 [Read the Docs](docs/)
+- 📖 [Troubleshooting Guide](TROUBLESHOOTING.md)

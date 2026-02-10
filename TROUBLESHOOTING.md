@@ -24,11 +24,11 @@ Common issues and their solutions.
 opkg update
 opkg install wget
 
-# Or use curl instead
+# Or use curl instead (recommended)
 opkg install curl
 
-# Modify install command to use curl
-curl -o /root/passwall-monitor.sh https://raw.githubusercontent.com/YounesRahimi/openwrt-passwall-monitor/main/passwall-monitor.sh
+# Use the automatic installer
+curl -sSL https://raw.githubusercontent.com/YounesRahimi/openwrt-passwall-monitor/main/install.sh | sh
 ```
 
 ### Error: "crontab: command not found"
@@ -50,13 +50,13 @@ opkg install cron
 **Solution:**
 ```bash
 # Make executable
-chmod +x /root/passwall-monitor.sh
+chmod +x /usr/bin/passwall-monitor.sh
 
 # Fix line endings (if downloaded on Windows)
-dos2unix /root/passwall-monitor.sh
+dos2unix /usr/bin/passwall-monitor.sh
 
 # If dos2unix not available
-sed -i 's/\r$//' /root/passwall-monitor.sh
+sed -i 's/\r$//' /usr/bin/passwall-monitor.sh
 ```
 
 ---
@@ -95,8 +95,8 @@ crontab -e
 3. **Script has errors:**
 ```bash
 # Test script manually
-sh -n /root/passwall-monitor.sh  # Syntax check
-/root/passwall-monitor.sh         # Run once
+sh -n /usr/bin/passwall-monitor.sh  # Syntax check
+/usr/bin/passwall-monitor.sh         # Run once
 ```
 
 ### No logs being created
@@ -117,14 +117,14 @@ df -h
 
 1. **Directory doesn't exist:**
 ```bash
-mkdir -p /var/log
-touch /var/log/passwall_monitor.log
+mkdir -p /tmp/log
+touch /tmp/log/passwall_monitor.log
 ```
 
 2. **Permission issues:**
 ```bash
-chmod 644 /var/log/passwall_monitor.log
-chown root:root /var/log/passwall_monitor.log
+chmod 644 /tmp/log/passwall_monitor.log
+chown root:root /tmp/log/passwall_monitor.log
 ```
 
 3. **Disk full:**
@@ -141,8 +141,8 @@ rm /var/log/*.log.old
 # Move log to persistent storage
 mkdir -p /root/logs
 # Edit script and change LOG_FILE path
-vi /root/passwall-monitor.sh
-# Change: LOG_FILE="/root/logs/passwall_monitor.log"
+vi /usr/bin/passwall-monitor.sh
+# Change: LOG_FILE="/tmp/log/passwall_monitor.log"
 ```
 
 ---
@@ -154,20 +154,20 @@ vi /root/passwall-monitor.sh
 **Diagnosis:**
 ```bash
 # Check restart frequency
-grep "RESTART TRIGGERED" /var/log/passwall_monitor.log
+grep "HIGH CPU DETECTED" /tmp/log/passwall_monitor.log
 
 # Check what's triggering restarts
-grep -A 2 "RESTART TRIGGERED" /var/log/passwall_monitor.log
+grep -A 2 "HIGH CPU DETECTED" /tmp/log/passwall_monitor.log
 ```
 
 **Solutions:**
 
 1. **Increase thresholds:**
 ```bash
-vi /root/passwall-monitor.sh
+vi /usr/bin/passwall-monitor.sh
 
-# For CPU issues - increase by 25-50%
-CPU_THRESHOLD=150  # If was 100
+# For CPU issues - increase threshold
+THRESHOLD=50  # If was 25
 
 # For RAM issues - increase by 20-30MB
 RAM_THRESHOLD_MB=100  # If was 80
@@ -175,18 +175,11 @@ RAM_THRESHOLD_MB=100  # If was 80
 
 2. **Increase duration before restart:**
 ```bash
-vi /root/passwall-monitor.sh
+vi /usr/bin/passwall-monitor.sh
 
 # Wait longer before restart
-HIGH_USAGE_DURATION=30  # Was 15 seconds
+HIGH_CPU_DURATION=30  # Was 15 seconds
 ```
-
-3. **Disable one check temporarily:**
-```bash
-vi /root/passwall-monitor.sh
-
-# Disable CPU check
-ENABLE_CPU_CHECK=0
 
 # Or disable RAM check
 ENABLE_RAM_CHECK=0
@@ -258,13 +251,13 @@ top -n 1  # Instead of top -bn1
 top -b -n 1  # Separate flags
 
 # Edit script to match your top version
-vi /root/passwall-monitor.sh
+vi /usr/bin/passwall-monitor.sh
 ```
 
 2. **Process permission issues:**
 ```bash
 # Run script as root
-sudo /root/passwall-monitor.sh
+sudo /usr/bin/passwall-monitor.sh
 
 # Check if Passwall runs as different user
 ps aux | grep xray
@@ -294,18 +287,18 @@ crontab -e
 
 # Remove half the entries (check every 10s instead of 5s)
 # Keep only these lines:
-* * * * * /root/passwall-monitor.sh
-* * * * * sleep 10; /root/passwall-monitor.sh
-* * * * * sleep 20; /root/passwall-monitor.sh
-* * * * * sleep 30; /root/passwall-monitor.sh
-* * * * * sleep 40; /root/passwall-monitor.sh
-* * * * * sleep 50; /root/passwall-monitor.sh
+* * * * * /usr/bin/passwall-monitor.sh
+* * * * * sleep 10; /usr/bin/passwall-monitor.sh
+* * * * * sleep 20; /usr/bin/passwall-monitor.sh
+* * * * * sleep 30; /usr/bin/passwall-monitor.sh
+* * * * * sleep 40; /usr/bin/passwall-monitor.sh
+* * * * * sleep 50; /usr/bin/passwall-monitor.sh
 ```
 
 2. **Optimize script:**
 ```bash
 # Check for resource-intensive operations
-time /root/passwall-monitor.sh
+time /usr/bin/passwall-monitor.sh
 # Should complete in <0.1 seconds
 ```
 
@@ -313,8 +306,8 @@ time /root/passwall-monitor.sh
 
 **Diagnosis:**
 ```bash
-# Check log size
-du -h /var/log/passwall_monitor.log
+# Check if log file exists and permissions
+ls -la /tmp/log/passwall_monitor.log
 ```
 
 **Solutions:**
@@ -323,12 +316,11 @@ Built-in rotation should handle this, but if not:
 
 ```bash
 # Manually rotate
-tail -n 500 /var/log/passwall_monitor.log > /var/log/passwall_monitor.log.tmp
-mv /var/log/passwall_monitor.log.tmp /var/log/passwall_monitor.log
+tail -n 500 /tmp/log/passwall_monitor.log > /tmp/log/passwall_monitor.log.tmp
+mv /tmp/log/passwall_monitor.log.tmp /tmp/log/passwall_monitor.log
 
-# Or reduce MAX_LOG_SIZE in script
-vi /root/passwall-monitor.sh
-MAX_LOG_SIZE=51200  # 50KB instead of 100KB
+# Or reduce log verbosity in script
+vi /usr/bin/passwall-monitor.sh
 ```
 
 ---
@@ -406,7 +398,7 @@ $(crontab -l)
 $(tail -50 /var/log/passwall_monitor.log)
 
 === Script Version ===
-$(head -5 /root/passwall-monitor.sh)
+$(head -5 /usr/bin/passwall-monitor.sh)
 EOF
 
 cat /tmp/diagnostic.txt
@@ -437,5 +429,5 @@ crontab -e
 killall passwall-monitor.sh
 
 # Or use uninstall script
-wget -O - https://raw.githubusercontent.com/YounesRahimi/openwrt-passwall-monitor/main/uninstall.sh | sh
+curl -sSL https://raw.githubusercontent.com/YounesRahimi/openwrt-passwall-monitor/main/uninstall.sh | sh
 ```
