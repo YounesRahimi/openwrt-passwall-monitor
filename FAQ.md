@@ -4,7 +4,11 @@
 
 ### What is this tool for?
 
-This tool automatically monitors your OpenWRT router's Passwall VPN processes and restarts them if they consume excessive CPU or RAM for an extended period. This helps maintain stable VPN performance.
+This tool automatically monitors your OpenWRT router's Passwall VPN processes and restarts them if they:
+- Consume excessive CPU or RAM for an extended period
+- Lose network connectivity through the VPN tunnel
+
+This helps maintain stable VPN performance and ensures internet access remains available.
 
 ### Why would Passwall need to be restarted?
 
@@ -13,6 +17,8 @@ Common reasons:
 - Stuck threads consuming CPU
 - Connection pool exhaustion
 - DNS resolution issues causing CPU spikes
+- Network connectivity loss through VPN tunnel
+- VPN server connection drops not properly detected
 
 ### Will this work on my router?
 
@@ -78,9 +84,12 @@ See the [Threshold Calculation Guide](ROUTER_CONFIGS.md#how-to-calculate-thresho
 
 Yes! Set these in the script:
 ```bash
-ENABLE_CPU_CHECK=0  # Disable CPU monitoring
-ENABLE_RAM_CHECK=0  # Disable RAM monitoring
+ENABLE_CPU_CHECK=0          # Disable CPU monitoring
+ENABLE_RAM_CHECK=0          # Disable RAM monitoring
+ENABLE_CONNECTIVITY_CHECK=0 # Disable network connectivity monitoring
 ```
+
+You can enable/disable any combination of these monitoring features.
 
 ### How often does it check?
 
@@ -134,6 +143,43 @@ crontab -r
 # To restore
 crontab /tmp/cron.backup
 ```
+
+## Network Connectivity Questions
+
+### How does network connectivity monitoring work?
+
+The monitor tests internet access by making HTTP requests to `https://www.google.com/generate_204`:
+- Only runs when VPN processes are active
+- Expects HTTP 204 response code (no content)
+- Uses both curl and wget as fallback
+- 10-second timeout per test
+
+### Why Google's generate_204 endpoint?
+
+This endpoint:
+- Returns HTTP 204 with no content (minimal bandwidth)
+- Widely used for connectivity testing
+- Highly reliable and fast
+- Standard for Android/Chrome connectivity checks
+
+### Can I use a different test endpoint?
+
+Yes! Edit the script:
+```bash
+CONNECTIVITY_URL="https://httpbin.org/status/200"
+# or
+CONNECTIVITY_URL="https://1.1.1.1/"
+```
+
+### What if I don't want connectivity monitoring?
+
+Set `ENABLE_CONNECTIVITY_CHECK=0` in the script.
+
+### How long does it wait before restarting for connectivity?
+
+Default: 60 seconds of consecutive failures (12 checks × 5 seconds each)
+
+You can adjust this with `CONNECTIVITY_FAILURE_DURATION=120` (for 2 minutes).
 
 ## Troubleshooting Questions
 

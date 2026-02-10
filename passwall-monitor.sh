@@ -1,16 +1,30 @@
 #!/bin/sh
-# Passwall CPU Monitor Script for OpenWRT
+# Passwall Monitor Script for OpenWRT
 # Author: Younes Rahimi
-# Monitors Passwall CPU usage and restarts if > 25% for 15+ seconds
+# Monitors Passwall CPU usage and network connectivity
+# Restarts Passwall if CPU > threshold for 15+ seconds or network fails for 1 minute
 
-THRESHOLD=25
+# CPU Monitoring Configuration
+CPU_THRESHOLD=25
 CHECK_INTERVAL=5  # Check every 5 seconds
 HIGH_CPU_DURATION=15  # Must be high for 15 seconds
+
+# Network Connectivity Configuration
+ENABLE_CONNECTIVITY_CHECK=1  # Set to 0 to disable network checking
+CONNECTIVITY_TIMEOUT=10  # Timeout for connectivity test in seconds
+CONNECTIVITY_FAILURE_DURATION=60  # Must fail for 60 seconds before restart
+CONNECTIVITY_URL="https://www.google.com/generate_204"
+
+# Logging
 LOG_FILE="/tmp/log/passwall_monitor.log"
 
 # Counter for consecutive high CPU readings
 high_cpu_count=0
-required_checks=$((HIGH_CPU_DURATION / CHECK_INTERVAL))
+required_cpu_checks=$((HIGH_CPU_DURATION / CHECK_INTERVAL))
+
+# Counter for consecutive connectivity failures
+connectivity_failure_count=0
+required_connectivity_checks=$((CONNECTIVITY_FAILURE_DURATION / CHECK_INTERVAL))
 
 # Ensure log directory exists
 mkdir -p "$(dirname "$LOG_FILE")"
@@ -59,41 +73,93 @@ get_passwall_cpu() {
             done
         fi
     done
-    
+
     echo "$total_cpu"
 }
 
+check_network_connectivity() {
+    if [ "$ENABLE_CONNECTIVITY_CHECK" -ne 1 ]; then
+        return 0  # Connectivity check disabled, assume OK
+    fi
+
+    # Check if any Passwall process is running
+    local passwall_running=0
+    for process in xray sing-box hysteria v2ray trojan; do
+        if pidof "$process" >/dev/null 2>&1; then
+            passwall_running=1
+            break
+        fi
+    done
+
+    if [ "$passwall_running" -eq 0 ]; then
+        return 0  # No VPN process running, skip connectivity check
+    fi
+
+    # Test connectivity using curl with timeout
+    if command -v curl >/dev/null 2>&1; then
+        response_code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout "$CONNECTIVITY_TIMEOUT" --max-time "$CONNECTIVITY_TIMEOUT" "$CONNECTIVITY_URL" 2>/dev/null)
+        if [ "$response_code" = "204" ]; then
+            return 0  # Success
+        else
+            return 1  # Failure
+        fi
+    elif command -v wget >/dev/null 2>&1; then
+        if wget --spider --timeout="$CONNECTIVITY_TIMEOUT" --tries=1 "$CONNECTIVITY_URL" >/dev/null 2>&1; then
+            return 0  # Success
+        else
+            return 1  # Failure
+        fi
+    else
+        log_message "WARNING: Neither curl nor wget available for connectivity check"
+        return 0  # Can't test, assume OK
+    fi
+}
+
 restart_passwall() {
-    log_message "HIGH CPU DETECTED - Restarting Passwall (CPU: $1%)"
+    local reason="$1"
+    if [ "$reason" = "cpu" ]; then
+        log_message "HIGH CPU DETECTED - Restarting Passwall (CPU: $2%)"
+    elif [ "$reason" = "connectivity" ]; then
+        log_message "NETWORK CONNECTIVITY FAILURE - Restarting Passwall"
+    else
+        log_message "Restarting Passwall (Reason: $reason)"
+    fi
+
     /etc/init.d/passwall restart
     sleep 5
     log_message "Passwall restarted successfully"
+
+    # Reset counters
     high_cpu_count=0
+    connectivity_failure_count=0
+    rm -f /tmp/passwall_high_cpu_count
+    rm -f /tmp/passwall_connectivity_failure_count
 }
 
 # Main monitoring loop - runs for one iteration (called by cron every 5 seconds)
-log_message "Monitor starting - checking Passwall CPU usage"
+log_message "Monitor starting - checking Passwall CPU and connectivity"
 
+# Check CPU usage
 current_cpu=$(get_passwall_cpu)
 log_message "Current CPU usage: $current_cpu%"
 
-if [ "$current_cpu" -gt "$THRESHOLD" ]; then
+cpu_restart_needed=0
+if [ "$current_cpu" -gt "$CPU_THRESHOLD" ]; then
     # Read the counter from state file
     if [ -f /tmp/passwall_high_cpu_count ]; then
         high_cpu_count=$(cat /tmp/passwall_high_cpu_count)
     else
         high_cpu_count=0
     fi
-    
+
     high_cpu_count=$((high_cpu_count + 1))
     echo "$high_cpu_count" > /tmp/passwall_high_cpu_count
-    
-    log_message "High CPU detected: $current_cpu% (count: $high_cpu_count/$required_checks)"
-    
+
+    log_message "High CPU detected: $current_cpu% (count: $high_cpu_count/$required_cpu_checks)"
+
     # Check if threshold duration exceeded
-    if [ "$high_cpu_count" -ge "$required_checks" ]; then
-        restart_passwall "$current_cpu"
-        rm -f /tmp/passwall_high_cpu_count
+    if [ "$high_cpu_count" -ge "$required_cpu_checks" ]; then
+        cpu_restart_needed=1
     fi
 else
     # CPU is normal, reset counter
@@ -101,6 +167,42 @@ else
         log_message "CPU normalized: $current_cpu% - Resetting counter"
         rm -f /tmp/passwall_high_cpu_count
     fi
+fi
+
+# Check network connectivity
+connectivity_restart_needed=0
+if [ "$ENABLE_CONNECTIVITY_CHECK" -eq 1 ]; then
+    if ! check_network_connectivity; then
+        # Read the counter from state file
+        if [ -f /tmp/passwall_connectivity_failure_count ]; then
+            connectivity_failure_count=$(cat /tmp/passwall_connectivity_failure_count)
+        else
+            connectivity_failure_count=0
+        fi
+
+        connectivity_failure_count=$((connectivity_failure_count + 1))
+        echo "$connectivity_failure_count" > /tmp/passwall_connectivity_failure_count
+
+        log_message "Network connectivity failure detected (count: $connectivity_failure_count/$required_connectivity_checks)"
+
+        # Check if threshold duration exceeded
+        if [ "$connectivity_failure_count" -ge "$required_connectivity_checks" ]; then
+            connectivity_restart_needed=1
+        fi
+    else
+        # Connectivity is OK, reset counter
+        if [ -f /tmp/passwall_connectivity_failure_count ]; then
+            log_message "Network connectivity restored - Resetting counter"
+            rm -f /tmp/passwall_connectivity_failure_count
+        fi
+    fi
+fi
+
+# Restart if needed
+if [ "$cpu_restart_needed" -eq 1 ]; then
+    restart_passwall "cpu" "$current_cpu"
+elif [ "$connectivity_restart_needed" -eq 1 ]; then
+    restart_passwall "connectivity"
 fi
 
 log_message "Monitor check completed"

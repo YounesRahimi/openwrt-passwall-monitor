@@ -5,6 +5,7 @@ Common issues and their solutions.
 ## Table of Contents
 - [Installation Issues](#installation-issues)
 - [Monitoring Issues](#monitoring-issues)
+- [Network Connectivity Issues](#network-connectivity-issues)
 - [False Positives / Too Many Restarts](#false-positives--too-many-restarts)
 - [Script Not Detecting Processes](#script-not-detecting-processes)
 - [Performance Issues](#performance-issues)
@@ -143,6 +144,142 @@ mkdir -p /root/logs
 # Edit script and change LOG_FILE path
 vi /usr/bin/passwall-monitor.sh
 # Change: LOG_FILE="/tmp/log/passwall_monitor.log"
+```
+
+---
+
+## Network Connectivity Issues
+
+### Connectivity checks failing but internet works fine
+
+**Diagnosis:**
+```bash
+# Test connectivity manually
+curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 "https://www.google.com/generate_204"
+# Should return: 204
+
+# Test with wget (if curl fails)
+wget --spider --timeout=10 --tries=1 "https://www.google.com/generate_204"
+```
+
+**Possible Causes:**
+
+1. **Firewall blocking HTTP/HTTPS**
+```bash
+# Check if curl/wget are blocked
+iptables -L | grep -i drop
+iptables -L | grep -i reject
+
+# Temporarily allow outbound HTTP/HTTPS
+iptables -I OUTPUT -p tcp --dport 80 -j ACCEPT
+iptables -I OUTPUT -p tcp --dport 443 -j ACCEPT
+```
+
+2. **DNS resolution issues**
+```bash
+# Test DNS resolution
+nslookup www.google.com
+dig www.google.com
+
+# Check DNS servers
+cat /etc/resolv.conf
+
+# Use IP instead of domain
+vi /usr/bin/passwall-monitor.sh
+# Change: CONNECTIVITY_URL="https://8.8.8.8/"
+```
+
+3. **VPN tunnel not routing properly**
+```bash
+# Check routing table
+ip route show
+
+# Check if VPN processes are running
+ps | grep -E 'xray|sing-box|hysteria|v2ray|trojan'
+
+# Test direct connection (bypass VPN)
+curl --interface eth0 -s -o /dev/null -w "%{http_code}" "https://www.google.com/generate_204"
+```
+
+### Connectivity checks causing unnecessary restarts
+
+**Solution 1: Increase timeout**
+```bash
+vi /usr/bin/passwall-monitor.sh
+
+# Increase timeout values
+CONNECTIVITY_TIMEOUT=20                    # 20 seconds instead of 10
+CONNECTIVITY_FAILURE_DURATION=180         # 3 minutes instead of 1
+```
+
+**Solution 2: Use alternative endpoint**
+```bash
+vi /usr/bin/passwall-monitor.sh
+
+# Use alternative endpoints
+CONNECTIVITY_URL="https://httpbin.org/status/200"
+# or
+CONNECTIVITY_URL="https://1.1.1.1/"
+# or
+CONNECTIVITY_URL="https://8.8.8.8/"
+```
+
+**Solution 3: Disable connectivity checking**
+```bash
+vi /usr/bin/passwall-monitor.sh
+
+# Disable connectivity monitoring
+ENABLE_CONNECTIVITY_CHECK=0
+```
+
+### curl or wget not available
+
+**Problem:** Router missing HTTP clients.
+
+**Solution:**
+```bash
+# Install curl (recommended)
+opkg update
+opkg install curl
+
+# Or install wget
+opkg install wget
+
+# Check available options
+which curl wget
+```
+
+### Connectivity check working but script still restarts
+
+**Diagnosis:**
+```bash
+# Check log for exact reason
+grep "CONNECTIVITY FAILURE" /tmp/log/passwall_monitor.log
+grep "Restarting Passwall" /tmp/log/passwall_monitor.log
+
+# Test the exact command used by script
+/usr/bin/passwall-monitor.sh
+```
+
+**Possible Issues:**
+
+1. **Script using wrong HTTP client**
+```bash
+# Force use of specific client
+vi /usr/bin/passwall-monitor.sh
+
+# Modify check_network_connectivity() function
+# Comment out the curl section or wget section as needed
+```
+
+2. **Incorrect HTTP response code**
+```bash
+# Debug the response
+curl -v "https://www.google.com/generate_204"
+
+# Check what response code you're getting
+response_code=$(curl -s -o /dev/null -w "%{http_code}" "https://www.google.com/generate_204")
+echo "Response code: $response_code"
 ```
 
 ---

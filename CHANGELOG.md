@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-02-11
+
+### Added
+- **Network Connectivity Monitoring**: Automatically tests internet access when VPN processes are active
+- HTTP connectivity check via `https://www.google.com/generate_204`
+- Configurable connectivity failure duration (default: 60 seconds)
+- Support for both curl and wget as fallback
+- Optional connectivity monitoring (can be disabled via `ENABLE_CONNECTIVITY_CHECK=0`)
+- Customizable test endpoints and timeouts
+
+### Enhanced
+- Updated restart function to handle both CPU and connectivity restart reasons
+- Improved logging with detailed restart reasons
+- Enhanced documentation with connectivity monitoring examples
+- Added troubleshooting section for connectivity issues
+
+### Configuration
+- `ENABLE_CONNECTIVITY_CHECK`: Enable/disable connectivity monitoring (default: 1)
+- `CONNECTIVITY_TIMEOUT`: Timeout for connectivity tests (default: 10 seconds)
+- `CONNECTIVITY_FAILURE_DURATION`: Time to wait before restart (default: 60 seconds)  
+- `CONNECTIVITY_URL`: Test endpoint (default: Google's generate_204)
+
 ## [1.0.0] - 2026-02-10
 
 ### Added
@@ -35,4 +57,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Optimized for ASUS RT-AX59U
 - Compatible with any OpenWRT router (with threshold adjustment)
 
+[1.1.0]: https://github.com/YounesRahimi/openwrt-passwall-monitor/releases/tag/v1.1.0
 [1.0.0]: https://github.com/YounesRahimi/openwrt-passwall-monitor/releases/tag/v1.0.0
