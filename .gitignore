@@ -1,0 +1,26 @@
+# Backup files
+*.backup
+*.bak
+*.old
+
+# Log files
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Editor-specific
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Test files
+test/
+*.test.sh

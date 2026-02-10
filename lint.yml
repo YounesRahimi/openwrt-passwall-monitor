@@ -1,0 +1,38 @@
+name: Shell Script Linting
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  shellcheck:
+    name: Shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: '.'
+          severity: 'warning'
+          ignore_paths: 'examples docs'
+
+  syntax-check:
+    name: POSIX Syntax Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check shell script syntax
+        run: |
+          for script in *.sh; do
+            if [ -f "$script" ]; then
+              echo "Checking $script..."
+              sh -n "$script"
+            fi
+          done
