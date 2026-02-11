@@ -15,6 +15,9 @@ CONNECTIVITY_TIMEOUT=10  # Timeout for connectivity test in seconds
 CONNECTIVITY_FAILURE_DURATION=60  # Must fail for 60 seconds before restart
 CONNECTIVITY_URL="https://www.google.com/generate_204"
 
+# Restart and Cooldown Configuration
+RESTART_COOLDOWN=300  # Wait 5 minutes after restart before monitoring again (seconds)
+
 # Logging Configuration
 LOG_FILE="/tmp/log/passwall_monitor.log"
 LOG_LEVEL="INFO"  # Options: DEBUG, INFO, WARNING, ERROR (DEBUG shows everything)
@@ -26,6 +29,9 @@ required_cpu_checks=$((HIGH_CPU_DURATION / CHECK_INTERVAL))
 # Counter for consecutive connectivity failures
 connectivity_failure_count=0
 required_connectivity_checks=$((CONNECTIVITY_FAILURE_DURATION / CHECK_INTERVAL))
+
+# Cooldown state file
+COOLDOWN_FILE="/tmp/passwall_cooldown_until"
 
 # Ensure log directory exists
 mkdir -p "$(dirname "$LOG_FILE")"
@@ -55,6 +61,26 @@ log_warning() {
 
 log_error() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - [ERROR] $1" >> "$LOG_FILE"
+}
+
+# Check if system is in cooldown period after restart
+is_in_cooldown() {
+    if [ -f "$COOLDOWN_FILE" ]; then
+        local cooldown_until=$(cat "$COOLDOWN_FILE" 2>/dev/null || echo "0")
+        local current_time=$(date +%s)
+
+        if [ "$current_time" -lt "$cooldown_until" ]; then
+            local remaining=$((cooldown_until - current_time))
+            log_debug "In cooldown period - $remaining seconds remaining"
+            return 0  # Still in cooldown
+        else
+            # Cooldown period expired
+            log_info "Cooldown period expired - resuming normal monitoring"
+            rm -f "$COOLDOWN_FILE"
+            return 1  # Not in cooldown
+        fi
+    fi
+    return 1  # No cooldown file, not in cooldown
 }
 
 get_passwall_cpu() {
@@ -153,6 +179,11 @@ restart_passwall() {
     sleep 5
     log_info "Passwall restarted successfully"
 
+    # Set cooldown period
+    local cooldown_until=$(($(date +%s) + RESTART_COOLDOWN))
+    echo "$cooldown_until" > "$COOLDOWN_FILE"
+    log_info "Entering cooldown period for $RESTART_COOLDOWN seconds"
+
     # Reset counters
     high_cpu_count=0
     connectivity_failure_count=0
@@ -162,6 +193,12 @@ restart_passwall() {
 
 # Main monitoring loop - runs for one iteration (called by cron every 5 seconds)
 log_debug "Monitor starting - checking Passwall CPU and connectivity"
+
+# Check if we're in cooldown period
+if is_in_cooldown; then
+    log_debug "Skipping monitoring checks during cooldown period"
+    exit 0
+fi
 
 # Check CPU usage
 current_cpu=$(get_passwall_cpu)
