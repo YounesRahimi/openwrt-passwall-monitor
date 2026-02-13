@@ -6,85 +6,130 @@
 [![OpenWRT](https://img.shields.io/badge/OpenWRT-24.10-blue.svg)](https://openwrt.org/)
 [![Shell Script](https://img.shields.io/badge/Shell-Bash-green.svg)](https://www.gnu.org/software/bash/)
 
+## ⚠️ IMPORTANT - Read Before Installing
+
+**This monitor is designed to be a safety net for rare issues, not an active manager.**
+
+- **Conservative defaults**: Won't restart unless usage is VERY high for 60+ seconds
+- **Test mode available**: Enable `DRY_RUN=1` to see what it would do without actually restarting
+- **Easy disable**: If anything goes wrong, just remove the cron jobs
+
+**🚨 Passwall stopped working?** See [RECOVERY.md](docs/RECOVERY.md) for immediate fix.
+
 ## 🎯 What Does This Do?
 
 Automatically monitors your Passwall VPN processes (xray, sing-box, hysteria, v2ray, trojan) and restarts them when:
 
-- **CPU usage** exceeds thresholds (default: 100% = 1 full core)
-- **RAM usage** exceeds thresholds (default: 80MB)
-- **Network connectivity** fails through VPN (default: 1 minute of failures)
-- High usage **persists for 15+ seconds** (prevents false positives)
+- **CPU usage** exceeds thresholds (default: 200% = 2 full cores stuck)
+- **RAM usage** exceeds thresholds (default: 150MB)  
+- High usage **persists for 60+ seconds** (prevents false positives)
 
-Perfect for fixing those frustrating situations where Passwall gets stuck consuming resources or loses network connectivity!
+Perfect for fixing those rare situations where Passwall gets stuck - **but won't interfere with normal operation**.
 
 ## ✨ Features
 
-- ✅ **Triple Monitoring**: CPU + RAM + Network connectivity tracking
-- ✅ **Smart Connectivity Checks**: Tests actual internet access via Google's 204 endpoint
+- ✅ **Dual Monitoring**: CPU + RAM usage tracking
 - ✅ **Smart Thresholds**: Auto-tuned for your router's specs
-- ✅ **False Positive Prevention**: Only restarts after sustained issues
+- ✅ **False Positive Prevention**: Only restarts after sustained high usage
 - ✅ **Restart Protection**: 5-minute cooldown prevents restart loops
 - ✅ **Detailed Logging**: Track all events with automatic log rotation
 - ✅ **Easy Installation**: Copy, paste, done! (3 commands)
 - ✅ **Zero Dependencies**: Pure POSIX shell script
 - ✅ **Multiple Cores Supported**: Works with xray, sing-box, hysteria, v2ray, trojan
 
-## 📊 Default Thresholds (ASUS RT-AX59U)
+## 📊 Default Thresholds (CONSERVATIVE)
 
-These values are pre-configured for the **ASUS RT-AX59U** router:
+These values are set VERY HIGH to avoid false positives:
 
 | Resource | Threshold | Reasoning |
 |----------|-----------|-----------|
-| **CPU** | 100% | One full core (out of 4) - indicates stuck thread |
-| **RAM** | 80MB | Normal usage: 20-50MB, 80MB+ indicates leak |
-| **Network** | 1 minute | Failed connectivity checks before restart |
-| **Duration** | 15 seconds | Sustained high usage before restart |
-| **Cooldown** | 5 minutes | Prevents rapid restart loops |
+| **CPU** | 200% | TWO full cores stuck - indicates severe problem |
+| **RAM** | 150MB | 3x normal usage - indicates major leak |
+| **Duration** | 60 seconds | Must be sustained - prevents false positives |
+| **Cooldown** | 10 minutes | Long wait between restarts |
 
-### Why These Values?
+### Why These Conservative Values?
 
-- **ARMv8 4-core CPU** (400% total available)
-  - Single process using >100% = spinning/stuck thread
-  - 100% = 25% of total CPU capacity
-  
-- **512MB RAM** (~350MB available after OS)
-  - Normal Passwall: 20-50MB
-  - Memory leak threshold: 80MB (15% of available RAM)
+**These thresholds are intentionally HIGH** to ensure the monitor doesn't interfere with normal operation:
 
-- **Network Connectivity**
-  - Tests actual internet access via `https://www.google.com/generate_204`
-  - Only monitors when VPN processes are active
-  - 60-second failure threshold prevents false positives from temporary network issues
+- **Normal Passwall usage**: 5-30% CPU, 20-50MB RAM
+- **During heavy use**: 50-80% CPU, 60-80MB RAM  
+- **Monitor triggers**: 200%+ CPU, 150MB+ RAM for 60+ seconds
 
-## 🚀 Quick Start (2 Steps)
+**You can lower these** after observing your router's behavior, but start conservative!
 
-### 1. Download and Install
+## 🚀 Quick Start (3 Steps)
 
-**Option A - Automatic Installation (Recommended):**
+### 1. Download the Script
+
+**Option A - Direct download:**
 ```bash
 ssh root@192.168.1.1
-curl -sSL https://raw.githubusercontent.com/YounesRahimi/openwrt-passwall-monitor/main/install.sh | sh
+cd /root
+curl -o passwall-monitor.sh https://raw.githubusercontent.com/YounesRahimi/openwrt-passwall-monitor/main/passwall-monitor.sh
+chmod +x passwall-monitor.sh
 ```
 
-**Option B - Manual Download and Install:**
+**Option B - Copy/paste:**
 ```bash
 ssh root@192.168.1.1
-curl -o install.sh https://raw.githubusercontent.com/YounesRahimi/openwrt-passwall-monitor/main/install.sh
-chmod +x install.sh
-./install.sh
+cd /root
+# Copy the contents of passwall-monitor.sh
+vi passwall-monitor.sh  # Paste the script
+chmod +x passwall-monitor.sh
 ```
 
-### 2. Verify Installation
+### 2. Test It
 
 ```bash
-# Check if monitor is running
-ps | grep passwall-monitor
-
-# View real-time logs
-tail -f /tmp/log/passwall_monitor.log
+/root/passwall-monitor.sh
+tail -f /var/log/passwall_monitor.log
 ```
 
-**Done!** 🎉 The monitor is now running automatically every 5 seconds.
+**Recommended: Enable Test Mode First**
+
+```bash
+# Edit script
+vi /root/passwall-monitor.sh
+
+# Find and change this line (around line 26):
+DRY_RUN=1              # 1=log only, don't restart (TEST MODE)
+
+# Save and exit
+```
+
+In test mode, the script logs what it *would* do without actually restarting Passwall. Monitor for 24-48 hours to ensure it won't trigger false positives.
+
+### 3. Set Up Auto-Run (Cron)
+
+```bash
+crontab -e
+```
+
+Add these lines to run every 5 seconds:
+
+```cron
+* * * * * /root/passwall-monitor.sh
+* * * * * sleep 5; /root/passwall-monitor.sh
+* * * * * sleep 10; /root/passwall-monitor.sh
+* * * * * sleep 15; /root/passwall-monitor.sh
+* * * * * sleep 20; /root/passwall-monitor.sh
+* * * * * sleep 25; /root/passwall-monitor.sh
+* * * * * sleep 30; /root/passwall-monitor.sh
+* * * * * sleep 35; /root/passwall-monitor.sh
+* * * * * sleep 40; /root/passwall-monitor.sh
+* * * * * sleep 45; /root/passwall-monitor.sh
+* * * * * sleep 50; /root/passwall-monitor.sh
+* * * * * sleep 55; /root/passwall-monitor.sh
+```
+
+Save and exit, then restart cron:
+
+```bash
+/etc/init.d/cron restart
+```
+
+**Done!** 🎉 The monitor is now running.
 
 ## 📝 Usage
 
@@ -92,13 +137,13 @@ tail -f /tmp/log/passwall_monitor.log
 
 ```bash
 # Follow live logs
-tail -f /tmp/log/passwall_monitor.log
+tail -f /var/log/passwall_monitor.log
 
 # View recent logs
-tail -n 50 /tmp/log/passwall_monitor.log
+tail -n 50 /var/log/passwall_monitor.log
 
 # Search for restarts
-grep "HIGH CPU DETECTED" /tmp/log/passwall_monitor.log
+grep "RESTART TRIGGERED" /var/log/passwall_monitor.log
 ```
 
 ### Check Current Status
@@ -121,48 +166,43 @@ top -n 1 | grep -E 'xray|sing-box|hysteria|v2ray|trojan'
 /etc/init.d/passwall restart
 
 # Test monitor once
-/usr/bin/passwall-monitor.sh
+/root/passwall-monitor.sh
 
 # Stop monitoring (remove cron jobs)
-crontab -e  # Then delete all passwall-monitor lines
+crontab -e  # Delete all passwall-monitor lines
 ```
 
 ## ⚙️ Configuration
 
-Edit `/usr/bin/passwall-monitor.sh` to customize:
+Edit `/root/passwall-monitor.sh` to customize:
 
-### Adjust CPU/RAM Thresholds
-
-```bash
-# For more sensitive detection:
-CPU_THRESHOLD=15       # Lower threshold (15% CPU)
-
-# For less sensitive detection:
-CPU_THRESHOLD=50       # Higher threshold (50% CPU)
-
-# Adjust timing:
-HIGH_CPU_DURATION=30   # Wait 30 seconds before restart
-CHECK_INTERVAL=10      # Check every 10 seconds instead of 5
-```
-
-### Configure Network Connectivity Monitoring
+### Adjust Thresholds
 
 ```bash
-# Disable network checking entirely
-ENABLE_CONNECTIVITY_CHECK=0
+# For 2-core routers, lower CPU threshold:
+CPU_THRESHOLD=50        # 50% = one full core on 2-core system
 
-# Customize connectivity settings
-CONNECTIVITY_TIMEOUT=15                    # Timeout for connectivity test
-CONNECTIVITY_FAILURE_DURATION=120         # Wait 2 minutes before restart
-CONNECTIVITY_URL="https://httpbin.org/status/200"  # Alternative test endpoint
+# For 256MB RAM routers:
+RAM_THRESHOLD_MB=40     # Lower threshold for less RAM
+
+# For 1GB+ RAM routers:
+RAM_THRESHOLD_MB=150    # Higher threshold for more RAM
 ```
 
-### Supported Test Endpoints
+### Timing Configuration
 
-- `https://www.google.com/generate_204` (default) - Google's standard no-content endpoint
-- `https://httpbin.org/status/200` - Alternative testing service
-- `https://1.1.1.1/` - Cloudflare DNS endpoint
-- `https://8.8.8.8/` - Google DNS endpoint
+```bash
+CHECK_INTERVAL=5        # How often to check (seconds)
+HIGH_USAGE_DURATION=15  # How long to wait before restart (seconds)
+RESTART_COOLDOWN=300    # Cooldown between restarts (seconds)
+```
+
+### Enable/Disable Checks
+
+```bash
+ENABLE_CPU_CHECK=1      # 1=enabled, 0=disabled
+ENABLE_RAM_CHECK=1      # 1=enabled, 0=disabled
+```
 
 ## 🔍 Troubleshooting
 
@@ -193,106 +233,107 @@ top -bn1 | grep xray
 cat /proc/$(pidof xray)/status | grep VmRSS
 ```
 
-### Network Connectivity Issues?
-
-```bash
-# Test connectivity manually
-curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 "https://www.google.com/generate_204"
-# Should return: 204
-
-# Test with wget (alternative)
-wget --spider --timeout=10 --tries=1 "https://www.google.com/generate_204"
-
-# Check if VPN processes are running
-ps | grep -E 'xray|sing-box|hysteria|v2ray|trojan'
-
-# Disable connectivity check temporarily
-vi /usr/bin/passwall-monitor.sh  
-# Set ENABLE_CONNECTIVITY_CHECK=0
-```
-
 ### Logs Not Appearing?
 
 ```bash
 # Create log directory
-mkdir -p /tmp/log
-touch /tmp/log/passwall_monitor.log
+mkdir -p /var/log
+touch /var/log/passwall_monitor.log
 
 # Check permissions
-ls -la /tmp/log/passwall_monitor.log
+ls -la /var/log/passwall_monitor.log
 
-# Test logging manually
-/usr/bin/passwall-monitor.sh
-cat /tmp/log/passwall_monitor.log
+# Test logging
+/root/passwall-monitor.sh
+cat /var/log/passwall_monitor.log
 ```
 
 ### Too Many Restarts?
 
 ```bash
-# Increase threshold or duration
-vi /usr/bin/passwall-monitor.sh
+# Increase thresholds or duration
+vi /root/passwall-monitor.sh
 
-# Increase THRESHOLD to 50
-# Or increase HIGH_CPU_DURATION to 30
+# Increase CPU_THRESHOLD to 150
+# Or increase HIGH_USAGE_DURATION to 30
 ```
 
 ## 📋 Recommended Thresholds by Router
 
-| Router Model | CPU Cores | RAM | CPU Threshold | Notes |
-|--------------|-----------|-----|---------------|-------|
-| ASUS RT-AX59U | 4 | 512MB | 25% | Default setting |
-| Xiaomi AX3600 | 4 | 512MB | 25% | Good for high-end routers |
-| GL.iNet AR300M | 1 | 128MB | 50% | Single core, higher threshold |
-| Netgear R7800 | 2 | 512MB | 35% | Dual core compromise |
-| Linksys WRT3200ACM | 2 | 512MB | 35% | Dual core compromise |
+| Router Model | CPU Cores | RAM | CPU Threshold | RAM Threshold |
+|--------------|-----------|-----|---------------|---------------|
+| ASUS RT-AX59U | 4 | 512MB | 100% | 80MB |
+| Xiaomi AX3600 | 4 | 512MB | 100% | 80MB |
+| GL.iNet AR300M | 1 | 128MB | 80% | 30MB |
+| Netgear R7800 | 2 | 512MB | 75% | 80MB |
+| Linksys WRT3200ACM | 2 | 512MB | 75% | 80MB |
 
 **Don't see your router?** Use these rules:
-- **Single core**: Start with 50-80%
-- **Dual core**: Start with 35-50% 
-- **Quad core+**: Start with 25-35%
+- **CPU**: `100% ÷ number_of_cores` (minimum 50%)
+- **RAM**: `15-20% of available RAM` after OS overhead
 
 ## 🗂️ File Locations
 
 ```
-/usr/bin/passwall-monitor.sh           # Main script
-/tmp/log/passwall_monitor.log          # Activity log
-/tmp/passwall_high_cpu_count           # Temporary counter state
+/root/passwall-monitor.sh           # Main script
+/var/log/passwall_monitor.log       # Activity log (auto-rotates at 100KB)
+/tmp/passwall_monitor_state         # Temporary counter state
+/tmp/passwall_last_restart          # Last restart timestamp
 ```
 
 ## 🧪 Testing
 
-### Test Manual Execution
+### Simulate High CPU
 
 ```bash
-# Run the monitor once manually
-/usr/bin/passwall-monitor.sh
+# Run this on your router to test
+yes > /dev/null &
+# Monitor should NOT restart (process name doesn't match)
 
-# Check the log for output
-tail /tmp/log/passwall_monitor.log
+# Kill it after testing
+killall yes
 ```
 
 ### View Statistics
 
 ```bash
 # Check how often restarts occur
-grep "HIGH CPU DETECTED" /tmp/log/passwall_monitor.log | wc -l
+grep "RESTART TRIGGERED" /var/log/passwall_monitor.log | wc -l
 
-# See recent activity
-tail -20 /tmp/log/passwall_monitor.log
+# See average uptime between restarts
+grep "RESTART TRIGGERED" /var/log/passwall_monitor.log
 ```
 
 ## 🔄 Updating
 
 ```bash
-# Easy update using install script (preserves settings)
-curl -sSL https://raw.githubusercontent.com/YounesRahimi/openwrt-passwall-monitor/main/install.sh | sh
+cd /root
+# Backup current config
+cp passwall-monitor.sh passwall-monitor.sh.backup
+
+# Download new version
+curl -o passwall-monitor.sh https://raw.githubusercontent.com/YounesRahimi/openwrt-passwall-monitor/main/passwall-monitor.sh
+chmod +x passwall-monitor.sh
+
+# Restore your custom settings
+vi passwall-monitor.sh
 ```
 
 ## 🗑️ Uninstallation
 
 ```bash
-# Easy uninstallation
-curl -sSL https://raw.githubusercontent.com/YounesRahimi/openwrt-passwall-monitor/main/uninstall.sh | sh
+# Remove cron jobs
+crontab -e
+# Delete all passwall-monitor lines
+
+# Remove files
+rm /root/passwall-monitor.sh
+rm /var/log/passwall_monitor.log
+rm /tmp/passwall_monitor_state
+rm /tmp/passwall_last_restart
+
+# Restart cron
+/etc/init.d/cron restart
 ```
 
 ## ❓ FAQ

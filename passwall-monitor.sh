@@ -1,269 +1,234 @@
 #!/bin/sh
-# Passwall Monitor Script for OpenWRT
-# Author: Younes Rahimi
-# Monitors Passwall CPU usage and network connectivity
-# Restarts Passwall if CPU > threshold for 15+ seconds or network fails for 1 minute
+# OpenWRT Passwall Resource Monitor - CONSERVATIVE VERSION
+# Monitors CPU and RAM usage for Passwall and auto-restarts when thresholds exceeded
+# Optimized for ASUS RT-AX59U (ARMv8, 4-core, 512MB RAM)
 
-# CPU Monitoring Configuration
-CPU_THRESHOLD=25
-CHECK_INTERVAL=5  # Check every 5 seconds
-HIGH_CPU_DURATION=15  # Must be high for 15 seconds
+### CONFIGURATION - CONSERVATIVE DEFAULTS ###
+# These are set VERY HIGH to avoid interfering with normal operation
+# Only lower these if you understand the impact
 
-# Network Connectivity Configuration
-ENABLE_CONNECTIVITY_CHECK=1  # Set to 0 to disable network checking
-CONNECTIVITY_TIMEOUT=10  # Timeout for connectivity test in seconds
-CONNECTIVITY_FAILURE_DURATION=60  # Must fail for 60 seconds before restart
-CONNECTIVITY_URL="https://www.google.com/generate_204"
+CPU_THRESHOLD=200        # Percent (200% = TWO full cores stuck)
+                        # CONSERVATIVE: Only restart on severe issues
+                        # Normal operation: 5-30%
+                        # Start here, lower to 150 or 100 only if needed
 
-# Restart and Cooldown Configuration
-RESTART_COOLDOWN=300  # Wait 5 minutes after restart before monitoring again (seconds)
+RAM_THRESHOLD_MB=150    # MB - Passwall processes combined  
+                        # CONSERVATIVE: Only restart on major leak
+                        # Normal: 20-50MB, This catches 3x normal usage
+                        # Start here, lower to 120 or 100 only if needed
 
-# Logging Configuration
-LOG_FILE="/tmp/log/passwall_monitor.log"
-LOG_LEVEL="INFO"  # Options: DEBUG, INFO, WARNING, ERROR (DEBUG shows everything)
+CHECK_INTERVAL=5        # Seconds between checks
+HIGH_USAGE_DURATION=60  # CONSERVATIVE: Must be high for 60 seconds
+                        # This means 12 consecutive high readings
+                        # Prevents false positives during normal spikes
 
-# Counter for consecutive high CPU readings
-high_cpu_count=0
-required_cpu_checks=$((HIGH_CPU_DURATION / CHECK_INTERVAL))
+LOG_FILE="/var/log/passwall_monitor.log"
+MAX_LOG_SIZE=102400     # 100KB - prevent log file from growing too large
 
-# Counter for consecutive connectivity failures
-connectivity_failure_count=0
-required_connectivity_checks=$((CONNECTIVITY_FAILURE_DURATION / CHECK_INTERVAL))
+### ADVANCED OPTIONS ###
+ENABLE_CPU_CHECK=1      # 1=enabled, 0=disabled
+ENABLE_RAM_CHECK=1      # 1=enabled, 0=disabled
+RESTART_COOLDOWN=600    # 10 minutes - prevent restart loops
+DRY_RUN=0              # 1=log only, don't restart (for testing)
 
-# Cooldown state file
-COOLDOWN_FILE="/tmp/passwall_cooldown_until"
+### DO NOT EDIT BELOW THIS LINE ###
+STATE_FILE="/tmp/passwall_monitor_state"
+LAST_RESTART_FILE="/tmp/passwall_last_restart"
 
-# Ensure log directory exists
-mkdir -p "$(dirname "$LOG_FILE")"
+# Initialize counters
+high_usage_count=0
+required_checks=$((HIGH_USAGE_DURATION / CHECK_INTERVAL))
 
 log_message() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "$LOG_FILE"
-}
-
-# Logging functions with level filtering
-log_debug() {
-    if [ "$LOG_LEVEL" = "DEBUG" ]; then
-        echo "$(date '+%Y-%m-%d %H:%M:%S') - [DEBUG] $1" >> "$LOG_FILE"
-    fi
-}
-
-log_info() {
-    if [ "$LOG_LEVEL" = "DEBUG" ] || [ "$LOG_LEVEL" = "INFO" ]; then
-        echo "$(date '+%Y-%m-%d %H:%M:%S') - [INFO] $1" >> "$LOG_FILE"
-    fi
-}
-
-log_warning() {
-    if [ "$LOG_LEVEL" = "DEBUG" ] || [ "$LOG_LEVEL" = "INFO" ] || [ "$LOG_LEVEL" = "WARNING" ]; then
-        echo "$(date '+%Y-%m-%d %H:%M:%S') - [WARNING] $1" >> "$LOG_FILE"
-    fi
-}
-
-log_error() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - [ERROR] $1" >> "$LOG_FILE"
-}
-
-# Check if system is in cooldown period after restart
-is_in_cooldown() {
-    if [ -f "$COOLDOWN_FILE" ]; then
-        local cooldown_until=$(cat "$COOLDOWN_FILE" 2>/dev/null || echo "0")
-        local current_time=$(date +%s)
-
-        if [ "$current_time" -lt "$cooldown_until" ]; then
-            local remaining=$((cooldown_until - current_time))
-            log_debug "In cooldown period - $remaining seconds remaining"
-            return 0  # Still in cooldown
-        else
-            # Cooldown period expired
-            log_info "Cooldown period expired - resuming normal monitoring"
-            rm -f "$COOLDOWN_FILE"
-            return 1  # Not in cooldown
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    echo "$timestamp - $1" >> "$LOG_FILE"
+    
+    # Rotate log if too large
+    if [ -f "$LOG_FILE" ]; then
+        local log_size=$(stat -c%s "$LOG_FILE" 2>/dev/null || echo 0)
+        if [ "$log_size" -gt "$MAX_LOG_SIZE" ]; then
+            tail -n 500 "$LOG_FILE" > "$LOG_FILE.tmp"
+            mv "$LOG_FILE.tmp" "$LOG_FILE"
+            log_message "Log rotated (size exceeded ${MAX_LOG_SIZE} bytes)"
         fi
     fi
-    return 1  # No cooldown file, not in cooldown
 }
 
 get_passwall_cpu() {
-    # Get CPU usage for xray, sing-box, or hysteria processes
     local total_cpu=0
-
-    # Check for common Passwall process names
-    for process in xray sing-box hysteria v2ray; do
-        local pids=$(pidof "$process" 2>/dev/null || true)
-        if [ -n "$pids" ]; then
-            for pid in $pids; do
-                # Use /proc/stat for more reliable CPU measurement
-                if [ -f "/proc/$pid/stat" ]; then
-                    # Read CPU times from /proc/pid/stat
-                    local stat_line=$(cat "/proc/$pid/stat" 2>/dev/null || echo "")
-                    if [ -n "$stat_line" ]; then
-                        # Get utime + stime (user + system CPU time)
-                        local utime=$(echo "$stat_line" | awk '{print $14}')
-                        local stime=$(echo "$stat_line" | awk '{print $15}')
-
-                        # Simple heuristic: if process exists and is consuming resources
-                        if [ -n "$utime" ] && [ -n "$stime" ]; then
-                            # Check if process is actively using CPU by reading twice
-                            sleep 1
-                            local stat_line2=$(cat "/proc/$pid/stat" 2>/dev/null || echo "")
-                            if [ -n "$stat_line2" ]; then
-                                local utime2=$(echo "$stat_line2" | awk '{print $14}')
-                                local stime2=$(echo "$stat_line2" | awk '{print $15}')
-
-                                # Calculate CPU usage (simplified)
-                                local cpu_ticks=$((utime2 + stime2 - utime - stime))
-                                # If process consumed significant CPU in 1 second, consider it high
-                                if [ "$cpu_ticks" -gt 50 ]; then
-                                    total_cpu=$((total_cpu + 30))
-                                fi
-                            fi
-                        fi
-                    fi
+    local process_found=0
+    
+    # Find Passwall-related processes
+    for process in xray sing-box hysteria v2ray trojan; do
+        local pids=$(pidof "$process" 2>/dev/null)
+        
+        for pid in $pids; do
+            if [ -n "$pid" ]; then
+                process_found=1
+                # Get CPU usage using top
+                local cpu=$(top -bn1 -p "$pid" 2>/dev/null | tail -n1 | awk '{print $7}' | sed 's/%//' | awk '{print int($1+0.5)}')
+                
+                if [ -n "$cpu" ] && [ "$cpu" != "CPU" ]; then
+                    total_cpu=$((total_cpu + cpu))
                 fi
-            done
-        fi
+            fi
+        done
     done
-
-    echo "$total_cpu"
+    
+    if [ $process_found -eq 0 ]; then
+        echo "0"
+    else
+        echo "$total_cpu"
+    fi
 }
 
-check_network_connectivity() {
-    if [ "$ENABLE_CONNECTIVITY_CHECK" -ne 1 ]; then
-        return 0  # Connectivity check disabled, assume OK
-    fi
-
-    # Check if any Passwall process is running
-    local passwall_running=0
+get_passwall_ram_mb() {
+    local total_ram_kb=0
+    local process_found=0
+    
+    # Find Passwall-related processes and sum their RAM usage
     for process in xray sing-box hysteria v2ray trojan; do
-        if pidof "$process" >/dev/null 2>&1; then
-            passwall_running=1
-            break
-        fi
+        local pids=$(pidof "$process" 2>/dev/null)
+        
+        for pid in $pids; do
+            if [ -n "$pid" ] && [ -f "/proc/$pid/status" ]; then
+                process_found=1
+                # Get VmRSS (Resident Set Size) - actual physical RAM used
+                local ram_kb=$(grep "^VmRSS:" "/proc/$pid/status" 2>/dev/null | awk '{print $2}')
+                
+                if [ -n "$ram_kb" ]; then
+                    total_ram_kb=$((total_ram_kb + ram_kb))
+                fi
+            fi
+        done
     done
-
-    if [ "$passwall_running" -eq 0 ]; then
-        return 0  # No VPN process running, skip connectivity check
-    fi
-
-    # Test connectivity using curl with timeout
-    if command -v curl >/dev/null 2>&1; then
-        response_code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout "$CONNECTIVITY_TIMEOUT" --max-time "$CONNECTIVITY_TIMEOUT" "$CONNECTIVITY_URL" 2>/dev/null)
-        if [ "$response_code" = "204" ]; then
-            return 0  # Success
-        else
-            return 1  # Failure
-        fi
-    elif command -v wget >/dev/null 2>&1; then
-        if wget --spider --timeout="$CONNECTIVITY_TIMEOUT" --tries=1 "$CONNECTIVITY_URL" >/dev/null 2>&1; then
-            return 0  # Success
-        else
-            return 1  # Failure
-        fi
+    
+    if [ $process_found -eq 0 ]; then
+        echo "0"
     else
-        log_warning "Neither curl nor wget available for connectivity check"
-        return 0  # Can't test, assume OK
+        # Convert KB to MB
+        echo $((total_ram_kb / 1024))
     fi
+}
+
+check_restart_cooldown() {
+    if [ -f "$LAST_RESTART_FILE" ]; then
+        local last_restart=$(cat "$LAST_RESTART_FILE")
+        local current_time=$(date +%s)
+        local time_since_restart=$((current_time - last_restart))
+        
+        if [ "$time_since_restart" -lt "$RESTART_COOLDOWN" ]; then
+            local remaining=$((RESTART_COOLDOWN - time_since_restart))
+            log_message "Restart cooldown active - ${remaining}s remaining"
+            return 1
+        fi
+    fi
+    return 0
 }
 
 restart_passwall() {
-    local reason="$1"
-    if [ "$reason" = "cpu" ]; then
-        log_error "HIGH CPU DETECTED - Restarting Passwall (CPU: $2%)"
-    elif [ "$reason" = "connectivity" ]; then
-        log_error "NETWORK CONNECTIVITY FAILURE - Restarting Passwall"
-    else
-        log_error "Restarting Passwall (Reason: $reason)"
+    local reason=$1
+    local cpu=$2
+    local ram=$3
+    
+    if ! check_restart_cooldown; then
+        return
     fi
-
+    
+    if [ "$DRY_RUN" -eq 1 ]; then
+        log_message "===== DRY RUN - WOULD RESTART ====="
+        log_message "Reason: $reason"
+        log_message "CPU: ${cpu}% | RAM: ${ram}MB"
+        log_message "==================================="
+        return
+    fi
+    
+    log_message "===== RESTART TRIGGERED ====="
+    log_message "Reason: $reason"
+    log_message "CPU: ${cpu}% | RAM: ${ram}MB"
+    log_message "Restarting Passwall..."
+    
     /etc/init.d/passwall restart
-    sleep 5
-    log_info "Passwall restarted successfully"
-
-    # Set cooldown period
-    local cooldown_until=$(($(date +%s) + RESTART_COOLDOWN))
-    echo "$cooldown_until" > "$COOLDOWN_FILE"
-    log_info "Entering cooldown period for $RESTART_COOLDOWN seconds"
-
+    
+    # Record restart time
+    date +%s > "$LAST_RESTART_FILE"
+    
+    sleep 3
+    
+    # Verify restart
+    if pidof xray sing-box hysteria v2ray trojan >/dev/null 2>&1; then
+        log_message "Passwall restarted successfully"
+    else
+        log_message "WARNING: Passwall may not have restarted properly"
+    fi
+    
+    log_message "============================="
+    
     # Reset counters
-    high_cpu_count=0
-    connectivity_failure_count=0
-    rm -f /tmp/passwall_high_cpu_count
-    rm -f /tmp/passwall_connectivity_failure_count
+    high_usage_count=0
+    rm -f "$STATE_FILE"
 }
 
-# Main monitoring loop - runs for one iteration (called by cron every 5 seconds)
-log_debug "Monitor starting - checking Passwall CPU and connectivity"
-
-# Check if we're in cooldown period
-if is_in_cooldown; then
-    log_debug "Skipping monitoring checks during cooldown period"
-    exit 0
-fi
-
-# Check CPU usage
-current_cpu=$(get_passwall_cpu)
-log_debug "Current CPU usage: $current_cpu%"
-
-cpu_restart_needed=0
-if [ "$current_cpu" -gt "$CPU_THRESHOLD" ]; then
-    # Read the counter from state file
-    if [ -f /tmp/passwall_high_cpu_count ]; then
-        high_cpu_count=$(cat /tmp/passwall_high_cpu_count)
-    else
-        high_cpu_count=0
+# Main monitoring logic
+main() {
+    # Get current resource usage
+    local current_cpu=0
+    local current_ram=0
+    
+    if [ "$ENABLE_CPU_CHECK" -eq 1 ]; then
+        current_cpu=$(get_passwall_cpu)
     fi
-
-    high_cpu_count=$((high_cpu_count + 1))
-    echo "$high_cpu_count" > /tmp/passwall_high_cpu_count
-
-    log_warning "High CPU detected: $current_cpu% (count: $high_cpu_count/$required_cpu_checks)"
-
-    # Check if threshold duration exceeded
-    if [ "$high_cpu_count" -ge "$required_cpu_checks" ]; then
-        cpu_restart_needed=1
+    
+    if [ "$ENABLE_RAM_CHECK" -eq 1 ]; then
+        current_ram=$(get_passwall_ram_mb)
     fi
-else
-    # CPU is normal, reset counter
-    if [ -f /tmp/passwall_high_cpu_count ]; then
-        log_info "CPU normalized: $current_cpu% - Resetting counter"
-        rm -f /tmp/passwall_high_cpu_count
+    
+    # Check if any threshold exceeded
+    local threshold_exceeded=0
+    local reason=""
+    
+    if [ "$ENABLE_CPU_CHECK" -eq 1 ] && [ "$current_cpu" -gt "$CPU_THRESHOLD" ]; then
+        threshold_exceeded=1
+        reason="High CPU (${current_cpu}% > ${CPU_THRESHOLD}%)"
     fi
-fi
-
-# Check network connectivity
-connectivity_restart_needed=0
-if [ "$ENABLE_CONNECTIVITY_CHECK" -eq 1 ]; then
-    if ! check_network_connectivity; then
-        # Read the counter from state file
-        if [ -f /tmp/passwall_connectivity_failure_count ]; then
-            connectivity_failure_count=$(cat /tmp/passwall_connectivity_failure_count)
+    
+    if [ "$ENABLE_RAM_CHECK" -eq 1 ] && [ "$current_ram" -gt "$RAM_THRESHOLD_MB" ]; then
+        threshold_exceeded=1
+        if [ -n "$reason" ]; then
+            reason="$reason + High RAM (${current_ram}MB > ${RAM_THRESHOLD_MB}MB)"
         else
-            connectivity_failure_count=0
-        fi
-
-        connectivity_failure_count=$((connectivity_failure_count + 1))
-        echo "$connectivity_failure_count" > /tmp/passwall_connectivity_failure_count
-
-        log_warning "Network connectivity failure detected (count: $connectivity_failure_count/$required_connectivity_checks)"
-
-        # Check if threshold duration exceeded
-        if [ "$connectivity_failure_count" -ge "$required_connectivity_checks" ]; then
-            connectivity_restart_needed=1
-        fi
-    else
-        # Connectivity is OK, reset counter
-        if [ -f /tmp/passwall_connectivity_failure_count ]; then
-            log_info "Network connectivity restored - Resetting counter"
-            rm -f /tmp/passwall_connectivity_failure_count
+            reason="High RAM (${current_ram}MB > ${RAM_THRESHOLD_MB}MB)"
         fi
     fi
-fi
+    
+    # Handle threshold state
+    if [ "$threshold_exceeded" -eq 1 ]; then
+        # Load previous count
+        if [ -f "$STATE_FILE" ]; then
+            high_usage_count=$(cat "$STATE_FILE")
+        fi
+        
+        high_usage_count=$((high_usage_count + 1))
+        echo "$high_usage_count" > "$STATE_FILE"
+        
+        log_message "$reason (count: ${high_usage_count}/${required_checks})"
+        
+        # Check if sustained long enough
+        if [ "$high_usage_count" -ge "$required_checks" ]; then
+            restart_passwall "$reason" "$current_cpu" "$current_ram"
+        fi
+    else
+        # Usage is normal
+        if [ -f "$STATE_FILE" ]; then
+            local prev_count=$(cat "$STATE_FILE")
+            if [ "$prev_count" -gt 0 ]; then
+                log_message "Resources normalized - CPU: ${current_cpu}% RAM: ${current_ram}MB (counter reset)"
+            fi
+            rm -f "$STATE_FILE"
+        fi
+        high_usage_count=0
+    fi
+}
 
-# Restart if needed
-if [ "$cpu_restart_needed" -eq 1 ]; then
-    restart_passwall "cpu" "$current_cpu"
-elif [ "$connectivity_restart_needed" -eq 1 ]; then
-    restart_passwall "connectivity"
-fi
-
-log_debug "Monitor check completed"
+# Execute main function
+main
